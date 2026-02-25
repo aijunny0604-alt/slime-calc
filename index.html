@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>슬라임 300년 - 스탯 효율 분석</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:#1a1025;--surface:#251838;--surface2:#2f2045;--border:#4a3560;
+  --primary:#9b59b6;--primary-light:#bb77d6;--accent:#e84393;--accent-light:#fd79a8;
+  --text:#f0e6ff;--text-dim:#a088b8;--text-muted:#7a6090;
+  --success:#00b894;--danger:#ff6b6b;--warning:#fdcb6e;
+  --gold:#f9ca24;
+}
+body{background:var(--bg);color:var(--text);font-family:'Segoe UI',sans-serif;min-height:100vh;padding-bottom:40px}
+.header{background:linear-gradient(135deg,#2d1b4e,#1a1025);padding:14px 16px;text-align:center;border-bottom:2px solid var(--border)}
+.header h1{font-size:1.15rem;background:linear-gradient(90deg,var(--primary-light),var(--accent-light));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.header p{font-size:.72rem;color:var(--text-muted);margin-top:2px}
+.wrap{max-width:700px;margin:0 auto;padding:12px}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px;margin-bottom:10px}
+.card-title{font-size:.78rem;color:var(--text-dim);margin-bottom:6px;font-weight:700;text-transform:uppercase;letter-spacing:.5px}
+
+.acc-header{display:flex;justify-content:space-between;align-items:center;padding:10px 12px;background:var(--surface2);border-radius:8px;cursor:pointer;user-select:none;border:1px solid var(--border)}
+.acc-header:hover{border-color:var(--primary)}
+.acc-header h3{font-size:.85rem;color:var(--text)}
+.acc-arrow{color:var(--text-dim);transition:transform .2s;font-size:.75rem}
+.acc-header.open .acc-arrow{transform:rotate(180deg)}
+.acc-body{display:none;padding:4px 0}
+.acc-body.open{display:block}
+
+.st-head{display:grid;grid-template-columns:1fr 80px 80px;gap:4px;padding:4px 2px;border-bottom:2px solid var(--border);margin-bottom:2px}
+.st-head span{font-size:.72rem;font-weight:700;text-align:center;color:var(--text-dim)}
+.st-head span:first-child{text-align:left}
+.st-row{display:grid;grid-template-columns:1fr 80px 80px;gap:4px;padding:3px 2px;align-items:center;border-bottom:1px solid rgba(74,53,96,.3)}
+.st-label{font-size:.78rem;color:var(--text-dim);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.st-row input{width:100%;padding:5px 4px;font-size:.82rem;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:5px;outline:none;text-align:right}
+.st-row input:focus{border-color:var(--primary)}
+.st-cat{font-size:.72rem;color:var(--primary-light);font-weight:700;padding:8px 2px 4px;text-transform:uppercase;letter-spacing:.5px}
+
+.btn{padding:12px 20px;border:none;border-radius:8px;font-size:1rem;font-weight:600;cursor:pointer;transition:.2s}
+.btn-primary{background:var(--primary);color:#fff;width:100%}.btn-primary:hover{background:var(--primary-light)}
+.btn-accent{background:var(--accent);color:#fff}.btn-accent:hover{background:var(--accent-light)}
+.btn-outline{background:transparent;color:var(--text-dim);border:1.5px solid var(--border)}.btn-outline:hover{border-color:var(--primary);color:var(--text)}
+.btn-sm{padding:7px 10px;font-size:.82rem}
+
+/* 데미지 입력 */
+.dmg-input{display:flex;gap:6px;align-items:end}
+.dmg-input .field{flex:1}
+.dmg-input .field input{width:100%;padding:10px;font-size:.95rem;background:var(--surface2);color:var(--text);border:1.5px solid var(--border);border-radius:8px;outline:none}
+.dmg-input .field input:focus{border-color:var(--primary)}
+.dmg-input .field label{font-size:.78rem;color:var(--text-dim);margin-bottom:3px;display:block;font-weight:600}
+.crit-toggle{display:flex;align-items:center;gap:5px;padding:10px 12px;background:var(--surface2);border-radius:8px;cursor:pointer;user-select:none;border:1.5px solid var(--border)}
+.crit-toggle:hover{border-color:var(--accent)}
+.crit-toggle input{display:none}
+.crit-ind{width:16px;height:16px;border-radius:50%;border:2px solid var(--text-muted);transition:.2s}
+.crit-toggle input:checked~.crit-ind{background:var(--accent);border-color:var(--accent)}
+.stats-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(90px,1fr));gap:6px;margin:8px 0}
+.s-item{background:var(--surface2);border-radius:8px;padding:7px;text-align:center}
+.s-val{font-size:1.1rem;font-weight:700;color:var(--primary-light)}
+.s-val.crit-c{color:var(--accent)}.s-val.green-c{color:var(--success)}
+.s-lbl{font-size:.65rem;color:var(--text-dim);margin-top:1px}
+.rec-list{max-height:160px;overflow-y:auto;margin-top:6px}
+.rec-item{display:flex;align-items:center;justify-content:space-between;padding:5px 8px;border-bottom:1px solid var(--border);font-size:.82rem}
+.rec-item:hover{background:var(--surface2)}
+.rec-num{font-weight:700;min-width:22px;color:var(--text-muted);font-size:.7rem}
+.rec-dmg{font-weight:700;font-size:.9rem;flex:1;text-align:center}
+.rec-dmg.crit{color:var(--accent)}.rec-dmg.normal{color:var(--success)}
+.rec-badge{font-size:.56rem;padding:2px 4px;border-radius:3px;font-weight:700}
+.badge-crit{background:rgba(232,67,147,.2);color:var(--accent)}.badge-normal{background:rgba(0,184,148,.15);color:var(--success)}
+.rec-del{background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:.9rem;padding:2px 5px}.rec-del:hover{color:var(--danger)}
+
+/* 랭킹 */
+.rank-item{display:flex;align-items:center;gap:10px;padding:11px 8px;border-bottom:1px solid var(--border)}
+.rank-item:last-child{border:none}
+.rank-num{font-size:1.3rem;font-weight:800;min-width:28px;text-align:center}
+.rank-1{color:var(--gold)}.rank-2{color:#c0c0c0}.rank-3{color:#cd7f32}.rank-other{color:var(--text-muted)}
+.rank-info{flex:1;min-width:0}
+.rank-name{font-weight:700;font-size:.9rem}
+.rank-bar-wrap{height:5px;background:var(--surface2);border-radius:3px;margin-top:5px;overflow:hidden}
+.rank-bar{height:100%;border-radius:3px;transition:width .4s}
+.bar-1{background:linear-gradient(90deg,var(--gold),#f0932b)}.bar-2{background:linear-gradient(90deg,#c0c0c0,#a0a0a0)}.bar-3{background:linear-gradient(90deg,#cd7f32,#a0522d)}.bar-other{background:var(--primary)}
+.rank-pct{text-align:right;min-width:70px}
+.rank-pct .big{font-size:1.05rem;font-weight:700;color:var(--success)}
+.rank-pct .sub{font-size:.68rem;color:var(--text-dim)}
+
+.recommend-box{background:linear-gradient(135deg,#2d1b4e,#1a1025);border:1.5px solid var(--gold);border-radius:12px;padding:14px;margin-bottom:10px}
+.recommend-title{font-size:.8rem;color:var(--gold);font-weight:700;margin-bottom:8px}
+.recommend-text{font-size:.9rem;line-height:1.7}
+.recommend-text strong{color:var(--gold)}
+
+.section-toggle{display:flex;gap:3px;background:var(--surface2);border-radius:8px;padding:3px;margin-bottom:10px}
+.section-btn{flex:1;padding:8px 4px;text-align:center;border-radius:6px;cursor:pointer;font-size:.82rem;font-weight:600;color:var(--text-dim);border:none;background:none;transition:.2s}
+.section-btn.active{background:var(--primary);color:#fff}
+.section-btn:hover:not(.active){color:var(--text)}
+
+.mode-tag{display:inline-block;padding:3px 8px;border-radius:10px;font-size:.68rem;font-weight:700;margin-left:6px}
+.tag-real{background:rgba(0,184,148,.2);color:var(--success)}
+.tag-theory{background:rgba(155,89,182,.2);color:var(--primary-light)}
+
+.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--primary);color:#fff;padding:10px 20px;border-radius:8px;font-size:.85rem;font-weight:600;opacity:0;transition:.3s;pointer-events:none;z-index:999}
+.toast.show{opacity:1}
+::-webkit-scrollbar{width:4px}::-webkit-scrollbar-track{background:var(--surface)}::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>슬라임 300년 스탯 효율 분석</h1>
+  <p>어떤 스탯을 올려야 가장 강해지는지 분석</p>
+</div>
+
+<div class="wrap">
+
+  <!-- 능력치 입력 -->
+  <div class="card">
+    <div class="acc-header" onclick="toggleAcc(this)">
+      <h3>능력치 입력</h3><span class="acc-arrow">▼</span>
+    </div>
+    <div class="acc-body" id="statInputArea"></div>
+  </div>
+
+  <!-- 실전 데미지 기록 -->
+  <div class="card">
+    <div class="acc-header open" onclick="toggleAcc(this)">
+      <h3>실전 데미지 기록</h3><span class="acc-arrow">▼</span>
+    </div>
+    <div class="acc-body open">
+      <div class="dmg-input" style="margin-top:8px">
+        <div class="field"><label>데미지</label><input type="number" id="dmgInput" placeholder="Enter" min="0" inputmode="numeric"></div>
+        <label class="crit-toggle"><input type="checkbox" id="critCheck"><span style="font-size:.8rem;font-weight:600">크리</span><div class="crit-ind"></div></label>
+        <button class="btn btn-accent btn-sm" onclick="addRec()">추가</button>
+      </div>
+      <div class="stats-row">
+        <div class="s-item"><div class="s-val" id="rAvg">-</div><div class="s-lbl">전체 평균</div></div>
+        <div class="s-item"><div class="s-val" id="rNormAvg">-</div><div class="s-lbl">일반 평균</div></div>
+        <div class="s-item"><div class="s-val" id="rCritAvg">-</div><div class="s-lbl">크리 평균</div></div>
+        <div class="s-item"><div class="s-val crit-c" id="rCritRate">-</div><div class="s-lbl">크리율</div></div>
+        <div class="s-item"><div class="s-val green-c" id="rCount">0</div><div class="s-lbl">기록수</div></div>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <span class="s-lbl" style="font-size:.72rem">기록 목록</span>
+        <button class="btn btn-outline btn-sm" onclick="clearRecs()">전체삭제</button>
+      </div>
+      <div class="rec-list" id="recList"><div style="text-align:center;padding:14px;color:var(--text-muted);font-size:.82rem">전투하면서 데미지를 기록하세요</div></div>
+    </div>
+  </div>
+
+  <button class="btn btn-primary" onclick="analyze()">분석하기</button>
+
+  <div id="result" style="margin-top:12px"></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const STATS = [
+  ['hp','최종 HP (b)',5.56,6.17,'기초 능력치'],
+  ['atk','최종 공격력 (m)',114.93,238.23,''],
+  ['def','최종 방어력 (m)',24.73,48.32,''],
+  ['spd','최종 공격 속도',4.33,4.40,''],
+  ['combo','연격 (%)',37,62.21,'전투 확률'],
+  ['counter','반격 (%)',24.57,7.00,''],
+  ['stun','스턴 (%)',9.94,10.82,''],
+  ['dodge','회피 (%)',99.93,122.44,''],
+  ['crit','치명 (%)',45.76,34.42,''],
+  ['heal','회복 (%)',0,0.33,''],
+  ['comboIgn','연격률 무시 (%)',3,10,''],
+  ['counterIgn','반격률 무시 (%)',7.00,10,''],
+  ['stunIgn','스턴 무시 (%)',1.96,11.79,''],
+  ['dodgeIgn','회피 무시 (%)',67.03,56,''],
+  ['critDmg','치명 데미지 (%)',1087.69,3559.34,'데미지 배율'],
+  ['critDmgReduce','치명 데미지 경감 (%)',319.8,404.8,''],
+  ['basicAtk','기본 공격 (%)',2117.9,1727.55,''],
+  ['basicAtkReduce','기본 공격 경감 (%)',0.94,0,''],
+  ['comboDmg','연격 데미지 (%)',1100.2,3094.81,''],
+  ['comboDmgReduce','연격 데미지 경감 (%)',0,3.00,''],
+  ['counterDmg','반격 데미지 (%)',1444.05,1278.7,''],
+  ['skill','스킬 (%)',282,319,''],
+  ['skillReduce','스킬 데미지 경감 (%)',0,2.27,''],
+  ['mascotDmg','마스코트 데미지 (%)',241,301.87,''],
+  ['mascotReduce','마스코트 경감 (%)',0.89,12,''],
+  ['skillCrit','스킬 치명 (%)',12.95,9.49,''],
+  ['skillCritDmg','스킬 치명 데미지 (%)',103,110,''],
+  ['mascotCrit','마스코트 치명 (%)',3,3,''],
+  ['mascotCritDmg','마스코트 치명 데미지 (%)',200,222.5,''],
+  ['knockback','넉백 (%)',0,0.87,''],
+  ['knockbackIgn','넉백 무시 (%)',0.50,0,''],
+  ['bossDmg','보스 데미지 (%)',158.24,189.28,''],
+  ['healAmount','회복량 (%)',0.21,0.21,''],
+  ['allyDmg','동료 데미지 증가 (%)',59.35,512.69,''],
+  ['allyDmgReduce','동료 데미지 경감 (%)',10,0,''],
+];
+
+function buildStatInputs() {
+  let html = '<div class="st-head"><span>능력치</span><span style="color:var(--primary-light)">아군</span><span style="color:var(--accent-light)">상대</span></div>';
+  for (const [id, label, myDef, enDef, cat] of STATS) {
+    if (cat) html += `<div class="st-cat">${cat}</div>`;
+    html += `<div class="st-row"><span class="st-label">${label}</span><input type="number" id="my_${id}" value="${myDef}" step="0.01"><input type="number" id="en_${id}" value="${enDef}" step="0.01"></div>`;
+  }
+  document.getElementById('statInputArea').innerHTML = html;
+}
+
+function readSide(prefix) {
+  const s = {};
+  for (const [id] of STATS) s[id] = parseFloat(document.getElementById(prefix+'_'+id).value)||0;
+  return s;
+}
+
+// 이론 DPS 모델
+function calcDPS(atk, def) {
+  const base = Math.max(0, atk.atk - def.def);
+  const hitRate = Math.max(0.05, Math.min(1, 1 - Math.max(0, def.dodge - atk.dodgeIgn)/100));
+  const effCritDmg = Math.max(100, atk.critDmg - def.critDmgReduce);
+  const critMult = 1 + (atk.crit/100) * (effCritDmg/100 - 1);
+  const effCombo = Math.max(0, atk.combo - def.comboIgn)/100;
+  const effCounter = Math.max(0, atk.counter - def.counterIgn)/100;
+  const basicPT = base * (atk.basicAtk/100) * (1 - def.basicAtkReduce/100) * critMult;
+  const comboPT = effCombo * base * (atk.comboDmg/100) * (1 - def.comboDmgReduce/100) * critMult;
+  const counterPT = effCounter * base * (atk.counterDmg/100) * critMult;
+  let total = hitRate * (basicPT + comboPT + counterPT);
+  total *= (1 + atk.bossDmg/100) * (1 + atk.allyDmg/100);
+  return atk.spd > 0 ? total / atk.spd : 0;
+}
+
+// ===== 실전 기록 =====
+let recs = [];
+const REC_KEY = 'slime300_recs';
+function loadRecs(){try{recs=JSON.parse(localStorage.getItem(REC_KEY))||[]}catch(e){recs=[]}}
+function saveRecs(){try{localStorage.setItem(REC_KEY,JSON.stringify(recs))}catch(e){}}
+
+function addRec(){
+  const v=parseInt(document.getElementById('dmgInput').value);
+  if(isNaN(v)||v<0){showToast('숫자 입력');return}
+  const c=document.getElementById('critCheck').checked;
+  recs.push({dmg:v,crit:c});
+  document.getElementById('dmgInput').value='';
+  document.getElementById('dmgInput').focus();
+  document.getElementById('critCheck').checked=false;
+  saveRecs();renderRecs();
+  showToast(c?`크리! ${v.toLocaleString()}`:`${v.toLocaleString()}`);
+}
+function delRec(i){recs.splice(i,1);saveRecs();renderRecs()}
+function clearRecs(){if(!recs.length||!confirm('전체 삭제?'))return;recs=[];saveRecs();renderRecs()}
+
+function getRealStats() {
+  if (recs.length < 3) return null;
+  const all = recs.map(r=>r.dmg);
+  const crits = recs.filter(r=>r.crit).map(r=>r.dmg);
+  const norms = recs.filter(r=>!r.crit).map(r=>r.dmg);
+  const avg = all.reduce((a,b)=>a+b,0)/all.length;
+  const critAvg = crits.length ? crits.reduce((a,b)=>a+b,0)/crits.length : 0;
+  const normAvg = norms.length ? norms.reduce((a,b)=>a+b,0)/norms.length : 0;
+  const critRate = recs.filter(r=>r.crit).length/recs.length;
+  const critMult = (normAvg > 0 && crits.length) ? critAvg/normAvg : 1;
+  return { avg, critAvg, normAvg, critRate, critMult, count: recs.length };
+}
+
+function renderRecs(){
+  const list=document.getElementById('recList');
+  document.getElementById('rCount').textContent=recs.length;
+  const rs = getRealStats();
+  if(!rs){
+    ['rAvg','rCritAvg','rNormAvg','rCritRate'].forEach(id=>document.getElementById(id).textContent='-');
+    list.innerHTML='<div style="text-align:center;padding:14px;color:var(--text-muted);font-size:.82rem">전투하면서 데미지를 기록하세요</div>';
+    return;
+  }
+  document.getElementById('rAvg').textContent=Math.round(rs.avg).toLocaleString();
+  document.getElementById('rCritAvg').textContent=rs.critAvg?Math.round(rs.critAvg).toLocaleString():'-';
+  document.getElementById('rNormAvg').textContent=rs.normAvg?Math.round(rs.normAvg).toLocaleString():'-';
+  document.getElementById('rCritRate').textContent=(rs.critRate*100).toFixed(1)+'%';
+
+  let h='';
+  for(let i=recs.length-1;i>=0;i--){
+    const r=recs[i];
+    h+=`<div class="rec-item"><span class="rec-num">#${i+1}</span><span class="rec-dmg ${r.crit?'crit':'normal'}">${r.dmg.toLocaleString()}</span><span class="rec-badge ${r.crit?'badge-crit':'badge-normal'}">${r.crit?'CRIT':'일반'}</span><button class="rec-del" onclick="delRec(${i})">&times;</button></div>`;
+  }
+  list.innerHTML=h;
+}
+
+// ===== 분석 =====
+function analyze() {
+  const my = readSide('my');
+  const en = readSide('en');
+  const real = getRealStats();
+  const hasReal = real && real.count >= 3 && real.normAvg > 0;
+
+  // 실측 기반: 실제 평균 데미지를 기준으로 비율 변화 계산
+  // 이론 기반: calcDPS로 비율 변화 계산
+  const curDps = calcDPS(my, en);
+
+  function pctChange(override) {
+    const newDps = calcDPS({...my, ...override}, en);
+    return curDps > 0 ? ((newDps - curDps) / curDps * 100) : 0;
+  }
+
+  const tests = [
+    { name:'공격력', unit:'+10m', pct: pctChange({atk:my.atk+10}) },
+    { name:'회피 무시', unit:'+10%', pct: pctChange({dodgeIgn:my.dodgeIgn+10}) },
+    { name:'치명 확률', unit:'+5%', pct: pctChange({crit:Math.min(100,my.crit+5)}) },
+    { name:'치명 데미지', unit:'+100%', pct: pctChange({critDmg:my.critDmg+100}) },
+    { name:'기본공격 배율', unit:'+100%', pct: pctChange({basicAtk:my.basicAtk+100}) },
+    { name:'연격 확률', unit:'+5%', pct: pctChange({combo:my.combo+5}) },
+    { name:'연격 데미지', unit:'+100%', pct: pctChange({comboDmg:my.comboDmg+100}) },
+    { name:'반격 확률', unit:'+5%', pct: pctChange({counter:my.counter+5}) },
+    { name:'반격 데미지', unit:'+100%', pct: pctChange({counterDmg:my.counterDmg+100}) },
+    { name:'보스 데미지', unit:'+50%', pct: pctChange({bossDmg:my.bossDmg+50}) },
+    { name:'동료 데미지', unit:'+50%', pct: pctChange({allyDmg:my.allyDmg+50}) },
+    { name:'공격 속도', unit:'-0.1', pct: pctChange({spd:Math.max(0.1,my.spd-0.1)}) },
+  ];
+
+  tests.sort((a,b) => b.pct - a.pct);
+
+  // 실측이면 실제 데미지 기준으로 예상 증가량도 표시
+  const baseline = hasReal ? real.avg : null;
+
+  const a1=tests[0], a2=tests[1], a3=tests[2];
+
+  let html = '';
+
+  // 모드 표시
+  if (hasReal) {
+    html += `<div class="recommend-box" style="border-color:var(--success)">
+      <div class="recommend-title" style="color:var(--success)">실측 기반 분석 <span class="mode-tag tag-real">REAL DATA</span></div>
+      <div class="recommend-text">
+        현재 실전 평균 데미지: <strong style="color:var(--success)">${Math.round(real.avg).toLocaleString()}</strong>
+        (일반 ${Math.round(real.normAvg).toLocaleString()} / 크리 ${real.critAvg?Math.round(real.critAvg).toLocaleString():'-'})<br>
+        실측 크리율: <strong>${(real.critRate*100).toFixed(1)}%</strong> / 실측 크리배율: <strong>${real.critMult.toFixed(2)}x</strong><br><br>
+        가장 효율적: <strong>${a1.name} (${a1.unit})</strong> → <strong>+${a1.pct.toFixed(1)}%</strong> (예상 +${Math.round(baseline*a1.pct/100).toLocaleString()})<br>
+        2순위: <strong>${a2.name} (${a2.unit})</strong> → +${a2.pct.toFixed(1)}% (예상 +${Math.round(baseline*a2.pct/100).toLocaleString()})<br>
+        3순위: <strong>${a3.name} (${a3.unit})</strong> → +${a3.pct.toFixed(1)}% (예상 +${Math.round(baseline*a3.pct/100).toLocaleString()})
+      </div>
+    </div>`;
+  } else {
+    html += `<div class="recommend-box">
+      <div class="recommend-title">이론 기반 분석 <span class="mode-tag tag-theory">THEORY</span></div>
+      <div class="recommend-text">
+        가장 효율적: <strong>${a1.name} (${a1.unit})</strong> → DPS +${a1.pct.toFixed(1)}%<br>
+        2순위: <strong>${a2.name} (${a2.unit})</strong> → +${a2.pct.toFixed(1)}%<br>
+        3순위: <strong>${a3.name} (${a3.unit})</strong> → +${a3.pct.toFixed(1)}%<br>
+        <span style="font-size:.78rem;color:var(--text-muted)">실전 데미지를 기록하면 실측 기반으로 전환됩니다</span>
+      </div>
+    </div>`;
+  }
+
+  // 공격/방어 토글
+  html += `<div class="section-toggle">
+    <button class="section-btn active" onclick="showSection('atk',this)">공격 효율</button>
+    <button class="section-btn" onclick="showSection('def',this)">방어 효율</button>
+  </div>`;
+
+  // 공격 랭킹
+  html += `<div id="sec-atk" class="card">${buildRanking(tests, '+', baseline)}</div>`;
+
+  // 방어 스탯
+  const enDps = calcDPS(en, my);
+  const defTests = [
+    { name:'방어력', unit:'+10m', pct: enDps>0?((enDps-calcDPS(en,{...my,def:my.def+10}))/enDps*100):0 },
+    { name:'회피', unit:'+10%', pct: enDps>0?((enDps-calcDPS(en,{...my,dodge:my.dodge+10}))/enDps*100):0 },
+    { name:'크리뎀 경감', unit:'+100%', pct: enDps>0?((enDps-calcDPS(en,{...my,critDmgReduce:my.critDmgReduce+100}))/enDps*100):0 },
+    { name:'기본공격 경감', unit:'+1%', pct: enDps>0?((enDps-calcDPS(en,{...my,basicAtkReduce:my.basicAtkReduce+1}))/enDps*100):0 },
+    { name:'연격률 무시', unit:'+5%', pct: enDps>0?((enDps-calcDPS(en,{...my,comboIgn:my.comboIgn+5}))/enDps*100):0 },
+    { name:'반격률 무시', unit:'+5%', pct: enDps>0?((enDps-calcDPS(en,{...my,counterIgn:my.counterIgn+5}))/enDps*100):0 },
+    { name:'동료뎀 경감', unit:'+10%', pct: enDps>0?((enDps-calcDPS(en,{...my,allyDmgReduce:my.allyDmgReduce+10}))/enDps*100):0 },
+  ];
+  defTests.sort((a,b) => b.pct - a.pct);
+  html += `<div id="sec-def" class="card" style="display:none">${buildRanking(defTests, '-', null)}</div>`;
+
+  document.getElementById('result').innerHTML = html;
+}
+
+function buildRanking(items, sign, baseline) {
+  const maxPct = Math.max(...items.map(r=>r.pct), 0.01);
+  let html = '';
+  items.forEach((r,i) => {
+    const rank = i+1;
+    const rc = rank<=3?`rank-${rank}`:'rank-other';
+    const bc = rank<=3?`bar-${rank}`:'bar-other';
+    const barW = maxPct>0?(r.pct/maxPct*100):0;
+    const estDmg = baseline ? Math.round(baseline * r.pct / 100) : null;
+    html += `<div class="rank-item">
+      <div class="rank-num ${rc}">${rank}</div>
+      <div class="rank-info">
+        <div class="rank-name">${r.name} <span style="color:var(--text-muted);font-size:.72rem">${r.unit}</span></div>
+        <div class="rank-bar-wrap"><div class="rank-bar ${bc}" style="width:${barW}%"></div></div>
+      </div>
+      <div class="rank-pct">
+        <div class="big">${sign}${r.pct.toFixed(1)}%</div>
+        ${estDmg !== null ? `<div class="sub">${sign}${estDmg.toLocaleString()} 데미지</div>` : ''}
+      </div>
+    </div>`;
+  });
+  return html;
+}
+
+function showSection(id, btn) {
+  document.getElementById('sec-atk').style.display = id==='atk'?'block':'none';
+  document.getElementById('sec-def').style.display = id==='def'?'block':'none';
+  btn.parentElement.querySelectorAll('.section-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+}
+
+function toggleAcc(el){el.classList.toggle('open');el.nextElementSibling.classList.toggle('open')}
+function showToast(msg){const el=document.getElementById('toast');el.textContent=msg;el.classList.add('show');setTimeout(()=>el.classList.remove('show'),1500)}
+
+document.getElementById('dmgInput').addEventListener('keydown',e=>{if(e.key==='Enter')addRec()});
+buildStatInputs();
+loadRecs();renderRecs();
+analyze();
+</script>
+</body>
+</html>
