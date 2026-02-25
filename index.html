@@ -100,6 +100,19 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',sans-serif;mi
 
 .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--primary);color:#fff;padding:10px 20px;border-radius:8px;font-size:.85rem;font-weight:600;opacity:0;transition:.3s;pointer-events:none;z-index:999}
 .toast.show{opacity:1}
+/* 전후 비교 */
+.cmp-saved{background:var(--surface2);border-radius:8px;padding:10px;margin:8px 0}
+.cmp-saved .cmp-label{font-size:.7rem;color:var(--text-muted);font-weight:700;text-transform:uppercase;margin-bottom:4px}
+.cmp-saved .cmp-vals{display:flex;gap:12px;font-size:.85rem;flex-wrap:wrap}
+.cmp-saved .cmp-vals span{color:var(--text-dim)}
+.cmp-saved .cmp-vals strong{color:var(--primary-light)}
+.cmp-result{background:linear-gradient(135deg,#2d1b4e,#1a1025);border:1.5px solid var(--success);border-radius:12px;padding:14px;margin:10px 0}
+.cmp-result .cmp-title{font-size:.78rem;color:var(--success);font-weight:700;margin-bottom:8px;text-transform:uppercase}
+.cmp-row{display:flex;justify-content:space-between;padding:5px 0;font-size:.85rem;border-bottom:1px solid rgba(74,53,96,.3)}
+.cmp-row:last-child{border:none}
+.cmp-row .label{color:var(--text-dim)}
+.cmp-row .val{font-weight:700}
+.cmp-verdict{text-align:center;margin-top:10px;font-size:1.1rem;font-weight:800}
 ::-webkit-scrollbar{width:4px}::-webkit-scrollbar-track{background:var(--surface)}::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
 </style>
 </head>
@@ -149,6 +162,27 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',sans-serif;mi
   <button class="btn btn-primary" onclick="analyze()">분석하기</button>
 
   <div id="result" style="margin-top:12px"></div>
+
+  <!-- 전후 비교 -->
+  <div class="card" style="margin-top:16px">
+    <div class="acc-header" onclick="toggleAcc(this)">
+      <h3>스탯 전후 비교</h3><span class="acc-arrow">▼</span>
+    </div>
+    <div class="acc-body">
+      <p style="font-size:.78rem;color:var(--text-dim);margin:8px 0;line-height:1.5">
+        1. 스탯 투자 <b>전</b> 데미지를 위에서 기록 → [투자 전으로 저장]<br>
+        2. 스탯 투자 <b>후</b> 데미지를 다시 기록 → [투자 후로 저장]<br>
+        3. 실제 차이를 비교
+      </p>
+      <div style="display:flex;gap:6px;margin:8px 0">
+        <button class="btn btn-outline btn-sm" style="flex:1" onclick="saveBefore()">투자 전으로 저장</button>
+        <button class="btn btn-accent btn-sm" style="flex:1" onclick="saveAfter()">투자 후로 저장</button>
+      </div>
+      <div id="cmpSavedInfo"></div>
+      <div id="cmpResult"></div>
+      <button class="btn btn-outline btn-sm" onclick="resetCmp()" style="width:100%;margin-top:6px;font-size:.75rem">비교 초기화</button>
+    </div>
+  </div>
 </div>
 
 <div class="toast" id="toast"></div>
@@ -403,9 +437,104 @@ function showSection(id, btn) {
 function toggleAcc(el){el.classList.toggle('open');el.nextElementSibling.classList.toggle('open')}
 function showToast(msg){const el=document.getElementById('toast');el.textContent=msg;el.classList.add('show');setTimeout(()=>el.classList.remove('show'),1500)}
 
+// ===== 전후 비교 =====
+const CMP_KEY = 'slime300_cmp';
+let cmpData = { before: null, after: null };
+function loadCmp(){try{const d=JSON.parse(localStorage.getItem(CMP_KEY));if(d)cmpData=d}catch(e){}}
+function saveCmpData(){try{localStorage.setItem(CMP_KEY,JSON.stringify(cmpData))}catch(e){}}
+
+function saveBefore() {
+  const rs = getRealStats();
+  if (!rs || rs.count < 3) { showToast('데미지 3개 이상 기록 필요'); return; }
+  cmpData.before = { ...rs, memo: `${rs.count}회 기록` };
+  saveCmpData(); renderCmp();
+  showToast('투자 전 저장 완료! 이제 기록을 삭제하고 투자 후 데미지를 기록하세요');
+}
+
+function saveAfter() {
+  const rs = getRealStats();
+  if (!rs || rs.count < 3) { showToast('데미지 3개 이상 기록 필요'); return; }
+  if (!cmpData.before) { showToast('투자 전 데이터를 먼저 저장하세요'); return; }
+  cmpData.after = { ...rs, memo: `${rs.count}회 기록` };
+  saveCmpData(); renderCmp();
+  showToast('투자 후 저장 완료!');
+}
+
+function resetCmp() {
+  if (!cmpData.before && !cmpData.after) return;
+  if (!confirm('비교 데이터 초기화?')) return;
+  cmpData = { before: null, after: null };
+  saveCmpData(); renderCmp();
+}
+
+function renderCmp() {
+  const info = document.getElementById('cmpSavedInfo');
+  const result = document.getElementById('cmpResult');
+
+  // 저장 상태 표시
+  let ih = '';
+  if (cmpData.before) {
+    ih += `<div class="cmp-saved"><div class="cmp-label">투자 전</div><div class="cmp-vals">
+      <span>평균 <strong>${Math.round(cmpData.before.avg).toLocaleString()}</strong></span>
+      <span>일반 <strong>${Math.round(cmpData.before.normAvg).toLocaleString()}</strong></span>
+      <span>크리 <strong>${cmpData.before.critAvg?Math.round(cmpData.before.critAvg).toLocaleString():'-'}</strong></span>
+      <span>크리율 <strong>${(cmpData.before.critRate*100).toFixed(1)}%</strong></span>
+      <span>(${cmpData.before.count}회)</span>
+    </div></div>`;
+  }
+  if (cmpData.after) {
+    ih += `<div class="cmp-saved"><div class="cmp-label">투자 후</div><div class="cmp-vals">
+      <span>평균 <strong>${Math.round(cmpData.after.avg).toLocaleString()}</strong></span>
+      <span>일반 <strong>${Math.round(cmpData.after.normAvg).toLocaleString()}</strong></span>
+      <span>크리 <strong>${cmpData.after.critAvg?Math.round(cmpData.after.critAvg).toLocaleString():'-'}</strong></span>
+      <span>크리율 <strong>${(cmpData.after.critRate*100).toFixed(1)}%</strong></span>
+      <span>(${cmpData.after.count}회)</span>
+    </div></div>`;
+  }
+  info.innerHTML = ih;
+
+  // 비교 결과
+  if (!cmpData.before || !cmpData.after) {
+    result.innerHTML = '';
+    return;
+  }
+
+  const b = cmpData.before, a = cmpData.after;
+  const avgDiff = a.avg - b.avg;
+  const avgPct = b.avg > 0 ? (avgDiff / b.avg * 100) : 0;
+  const normDiff = a.normAvg - b.normAvg;
+  const normPct = b.normAvg > 0 ? (normDiff / b.normAvg * 100) : 0;
+  const critAvgDiff = (a.critAvg && b.critAvg) ? a.critAvg - b.critAvg : null;
+  const critAvgPct = (b.critAvg > 0 && critAvgDiff !== null) ? (critAvgDiff / b.critAvg * 100) : null;
+  const critRateDiff = (a.critRate - b.critRate) * 100;
+
+  const isUp = avgDiff > 0;
+  const color = isUp ? 'var(--success)' : avgDiff < 0 ? 'var(--danger)' : 'var(--warning)';
+
+  let rh = `<div class="cmp-result"><div class="cmp-title">실측 비교 결과</div>`;
+  rh += `<div class="cmp-row"><span class="label">평균 데미지</span><span class="val" style="color:${color}">${isUp?'+':''}${avgPct.toFixed(1)}% (${isUp?'+':''}${Math.round(avgDiff).toLocaleString()})</span></div>`;
+  rh += `<div class="cmp-row"><span class="label">일반 평균</span><span class="val" style="color:${normDiff>=0?'var(--success)':'var(--danger)'}">${normDiff>=0?'+':''}${normPct.toFixed(1)}% (${normDiff>=0?'+':''}${Math.round(normDiff).toLocaleString()})</span></div>`;
+  if (critAvgPct !== null) {
+    rh += `<div class="cmp-row"><span class="label">크리 평균</span><span class="val" style="color:${critAvgDiff>=0?'var(--success)':'var(--danger)'}">${critAvgDiff>=0?'+':''}${critAvgPct.toFixed(1)}% (${critAvgDiff>=0?'+':''}${Math.round(critAvgDiff).toLocaleString()})</span></div>`;
+  }
+  rh += `<div class="cmp-row"><span class="label">크리율 변화</span><span class="val">${critRateDiff>=0?'+':''}${critRateDiff.toFixed(1)}%p</span></div>`;
+
+  if (a.critMult > 1 && b.critMult > 1) {
+    const multDiff = a.critMult - b.critMult;
+    rh += `<div class="cmp-row"><span class="label">크리배율 변화</span><span class="val">${b.critMult.toFixed(2)}x → ${a.critMult.toFixed(2)}x (${multDiff>=0?'+':''}${multDiff.toFixed(2)})</span></div>`;
+  }
+
+  const verdict = isUp ? `데미지 +${avgPct.toFixed(1)}% 상승!` : avgDiff < 0 ? `데미지 ${avgPct.toFixed(1)}% 하락` : '차이 없음';
+  rh += `<div class="cmp-verdict" style="color:${color}">${verdict}</div>`;
+  rh += `</div>`;
+
+  result.innerHTML = rh;
+}
+
 document.getElementById('dmgInput').addEventListener('keydown',e=>{if(e.key==='Enter')addRec()});
 buildStatInputs();
 loadRecs();renderRecs();
+loadCmp();renderCmp();
 analyze();
 </script>
 </body>
